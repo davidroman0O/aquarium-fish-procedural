@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luminous Fish</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+        }
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="instructions">Left-click: Add food | Right-click: Add fish</div>
+    
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            background = createBackground();
+        });
+
+        // Mouse position tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let mouseInfluence = false;
+        let pmouseX = mouseX;
+        let pmouseY = mouseY;
+        
+        canvas.addEventListener('mousemove', (e) => {
+            pmouseX = mouseX;
+            pmouseY = mouseY;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            mouseInfluence = true;
+            
+            // Reset mouse influence after some time
+            clearTimeout(window.mouseTimer);
+            window.mouseTimer = setTimeout(() => {
+                mouseInfluence = false;
+            }, 5000);
+        });
+        
+        // Create background gradient
+        function createBackground() {
+            const gradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, canvas.width / 1.5
+            );
+            gradient.addColorStop(0, '#000830');
+            gradient.addColorStop(1, '#000010');
+            return gradient;
+        }
+
+        let background = createBackground();
+        
+        // Simplified water flow simulation - gentler values
+        const waterFlow = {
+            // Overall water flow direction and strength (reduced)
+            baseVx: 0.01,
+            baseVy: 0.005,
+            // Current flow variation
+            vx: 0,
+            vy: 0,
+            // Target flow variation (we'll smoothly interpolate to this)
+            targetVx: 0,
+            targetVy: 0,
+            // Time until we pick a new target
+            changeTimer: 200
+        };
+
+        function updateWaterFlow() {
+            // Smoothly move toward target flow
+            waterFlow.vx += (waterFlow.targetVx - waterFlow.vx) * 0.005;
+            waterFlow.vy += (waterFlow.targetVy - waterFlow.vy) * 0.005;
+            
+            // Decide if we need a new target
+            waterFlow.changeTimer--;
+            if (waterFlow.changeTimer <= 0) {
+                // Reduced target variation for gentler flow
+                waterFlow.targetVx = (Math.random() - 0.5) * 0.05;
+                waterFlow.targetVy = (Math.random() - 0.5) * 0.05;
+                waterFlow.changeTimer = 200 + Math.random() * 300;
+            }
+        }
+        
+        // Food system
+        const foods = [];
+        
+        function addFood(x, y) {
+            for (let i = 0; i < 5; i++) {
+                foods.push({
+                    x: x + (Math.random() - 0.5) * 20,
+                    y: y + (Math.random() - 0.5) * 20,
+                    size: 3 + Math.random() * 2,
+                    energy: 10 + Math.random() * 5,
+                    color: `hsl(${30 + Math.random() * 30}, 100%, 70%)`,
+                    vx: (Math.random() - 0.5) * 0.3, // Reduced initial velocity
+                    vy: (Math.random() - 0.5) * 0.3, // Reduced initial velocity
+                    alpha: 1.0,
+                    // Each food has slight variation in how it responds to current
+                    flowMultiplier: 0.7 + Math.random() * 0.6
+                });
+            }
+        }
+        
+        function updateFood() {
+            // Update the overall water flow
+            updateWaterFlow();
+            
+            for (let i = foods.length - 1; i >= 0; i--) {
+                const food = foods[i];
+                
+                // Apply water resistance/drag
+                food.vx *= 0.98;
+                food.vy *= 0.98;
+                
+                // Apply base water flow with variation
+                food.vx += (waterFlow.baseVx + waterFlow.vx) * food.flowMultiplier;
+                food.vy += (waterFlow.baseVy + waterFlow.vy) * food.flowMultiplier;
+                
+                // Add some random movement to simulate particles in water
+                food.vx += (Math.random() - 0.5) * 0.01; // Reduce random movement
+                food.vy += (Math.random() - 0.5) * 0.01; // Reduce random movement
+                
+                // Add very slight mouse influence if it's moving
+                if (mouseInfluence) {
+                    const dx = mouseX - pmouseX;
+                    const dy = mouseY - pmouseY;
+                    const mouseVelocity = Math.sqrt(dx*dx + dy*dy);
+                    
+                    if (mouseVelocity > 0) {
+                        // Cap the mouse velocity to prevent extremely violent movements
+                        const cappedDx = dx * Math.min(1, 2/mouseVelocity);
+                        const cappedDy = dy * Math.min(1, 2/mouseVelocity);
+                        
+                        const mouseDist = Math.sqrt(
+                            (food.x - mouseX) * (food.x - mouseX) + 
+                            (food.y - mouseY) * (food.y - mouseY)
+                        );
+                        
+                        if (mouseDist < 80) {
+                            const influence = (1 - mouseDist / 80) * 0.001;
+                            food.vx += cappedDx * influence;
+                            food.vy += cappedDy * influence;
+                        }
+                    }
+                }
+                
+                // Cap maximum velocity to make it easier for fish to catch
+                const maxVelocity = 0.7; // Maximum speed limit
+                const currentVelocity = Math.sqrt(food.vx * food.vx + food.vy * food.vy);
+                if (currentVelocity > maxVelocity) {
+                    food.vx = (food.vx / currentVelocity) * maxVelocity;
+                    food.vy = (food.vy / currentVelocity) * maxVelocity;
+                }
+                
+                // Update position
+                food.x += food.vx;
+                food.y += food.vy;
+                
+                // Fade out if near edges
+                const edgeDistance = Math.min(
+                    food.x, 
+                    food.y, 
+                    canvas.width - food.x, 
+                    canvas.height - food.y
+                );
+                
+                if (edgeDistance < 20) {
+                    food.alpha -= 0.02;
+                }
+                
+                // Remove if fully faded or off screen
+                if (food.alpha <= 0 || 
+                    food.x < -10 || 
+                    food.x > canvas.width + 10 || 
+                    food.y < -10 || 
+                    food.y > canvas.height + 10) {
+                    foods.splice(i, 1);
+                }
+            }
+        }
+        
+        function drawFood() {
+            ctx.save();
+            for (const food of foods) {
+                // Draw food with glow
+                ctx.globalAlpha = food.alpha;
+                ctx.shadowColor = food.color;
+                ctx.shadowBlur = 5;
+                ctx.fillStyle = food.color;
+                
+                ctx.beginPath();
+                ctx.arc(food.x, food.y, food.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw highlight
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.beginPath();
+                ctx.arc(food.x - food.size * 0.3, food.y - food.size * 0.3, food.size * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+        
+        // Luminous fish class with improved movement
+        class Fish {
+            constructor() {
+                // Position and movement
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.angle = Math.random() * Math.PI * 2;
+                this.velocity = 0.5 + Math.random() * 1.5;
+                this.turnSpeed = 0.02 + Math.random() * 0.03;
+                
+                // Visual properties
+                this.length = 15 + Math.random() * 25;
+                this.width = this.length * 0.3;
+                this.tailLength = this.length * 0.8;
+                this.tailWidth = this.width * 1.5;
+                
+                // Choose a color scheme
+                this.chooseColor();
+                
+                // Swimming motion
+                this.swimPhase = Math.random() * Math.PI * 2;
+                this.swimSpeed = 0.05 + Math.random() * 0.05;
+                this.swimAmplitude = 0.15 + Math.random() * 0.1;
+                
+                // Behavior
+                this.wanderAngle = Math.random() * Math.PI * 2;
+                this.wanderSpeed = 0.01 + Math.random() * 0.03;
+                this.targetX = this.x;
+                this.targetY = this.y;
+                this.targetChangeTimer = 0;
+                
+                // Energy and hunger
+                this.energy = 0.7 + Math.random() * 0.3;
+                this.hungry = false;
+                this.huntingTarget = null;
+                this.timeToNextHunger = 500 + Math.random() * 1000;
+                
+                // Fish turning mechanics
+                this.vx = 0;
+                this.vy = 0;
+                this.targetVx = 0;
+                this.targetVy = 0;
+                this.turnAcceleration = 0.02 + Math.random() * 0.02;
+                this.turnDirection = 0; // -1 left, 0 straight, 1 right
+                this.turnTimer = 0;
+                this.commitMove = 0;
+                this.commitMax = 5;
+                this.directionCounter = 0;
+                
+                // Create spine points
+                this.spinePoints = [];
+                this.createSpine();
+                
+                // Luminosity and glow
+                this.glow = 0.7 + Math.random() * 0.3;
+                this.glowSize = 5 + Math.random() * 10;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+                this.pulseSpeed = 0.02 + Math.random() * 0.03;
+            }
+            
+            chooseColor() {
+                // Vibrant color options
+                const colors = [
+                    { main: '#00ffff', glow: '#00ffff' }, // Cyan
+                    { main: '#ff00ff', glow: '#ff00ff' }, // Magenta
+                    { main: '#ffff00', glow: '#ffff00' }, // Yellow
+                    { main: '#ff8000', glow: '#ff8000' }, // Orange
+                    { main: '#00ff00', glow: '#00ff00' }, // Green
+                    { main: '#ff0080', glow: '#ff0080' }, // Pink
+                    { main: '#0080ff', glow: '#0080ff' }  // Light blue
+                ];
+                
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                
+                // Add slight color variation
+                this.color.main = this.shiftColorHue(this.color.main, Math.random() * 20 - 10);
+                this.color.glow = this.color.main;
+            }
+            
+            createSpine() {
+                // Create spine points for smoother animation
+                const segments = 10;
+                
+                for (let i = 0; i < segments; i++) {
+                    this.spinePoints.push({
+                        x: this.x,
+                        y: this.y,
+                        angle: this.angle
+                    });
+                }
+            }
+            
+            update() {
+                // Update swimming animation
+                this.swimPhase += this.swimSpeed * this.energy;
+                this.pulsePhase += this.pulseSpeed;
+                
+                // Update hunger
+                this.timeToNextHunger--;
+                if (this.timeToNextHunger <= 0) {
+                    this.hungry = true;
+                    this.energy = Math.max(0.3, this.energy - 0.1);
+                    this.timeToNextHunger = 500 + Math.random() * 500;
+                }
+                
+                // Check for food if hungry
+                if (this.hungry) {
+                    this.checkForFood();
+                }
+                
+                // Decide on movement target
+                this.targetChangeTimer--;
+                if (this.targetChangeTimer <= 0) {
+                    this.updateTarget();
+                }
+                
+                // Calculate direction to target
+                let targetAngle;
+                
+                if (mouseInfluence && Math.random() < 0.005) {
+                    // Occasionally be attracted to mouse
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < 300) {
+                        targetAngle = Math.atan2(dy, dx);
+                        // Increase speed when following mouse
+                        this.velocity = 2 + Math.random();
+                    } else {
+                        targetAngle = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+                        this.velocity = 0.5 + Math.random() * 1.5;
+                    }
+                } else {
+                    targetAngle = Math.atan2(this.targetY - this.y, this.targetX - this.x);
+                }
+                
+                // Improved turning mechanics
+                let angleDiff = targetAngle - this.angle;
+                
+                // Normalize angle difference to range [-PI, PI]
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                
+                // Apply turning with commitment behavior
+                if (this.commitMove < 0) {
+                    this.angle -= this.turnSpeed * 1.5;
+                    this.commitMove += 1;
+                    this.turnDirection = -1;
+                } else if (this.commitMove > 0) {
+                    this.angle += this.turnSpeed * 1.5;
+                    this.commitMove -= 1;
+                    this.turnDirection = 1;
+                } else if (angleDiff > 0.1) {
+                    this.angle += this.turnSpeed * this.energy;
+                    this.turnDirection = 1;
+                    
+                    // Sometimes commit to a turn
+                    if (this.directionCounter > 0) {
+                        this.directionCounter++;
+                        if (this.directionCounter > 2 * this.commitMax) {
+                            this.commitMove = 1 + Math.floor(this.commitMax / 3);
+                            this.directionCounter = 0;
+                        }
+                    } else {
+                        this.directionCounter = 1;
+                    }
+                } else if (angleDiff < -0.1) {
+                    this.angle -= this.turnSpeed * this.energy;
+                    this.turnDirection = -1;
+                    
+                    // Sometimes commit to a turn
+                    if (this.directionCounter < 0) {
+                        this.directionCounter--;
+                        if (this.directionCounter < -2 * this.commitMax) {
+                            this.commitMove = -1 - Math.floor(this.commitMax / 3);
+                            this.directionCounter = 0;
+                        }
+                    } else {
+                        this.directionCounter = -1;
+                    }
+                } else {
+                    // Close enough to target angle, apply small correction
+                    this.angle += angleDiff * this.turnSpeed * 0.5;
+                    this.turnDirection = 0;
+                }
+                
+                // Calculate target velocity with proper acceleration
+                this.targetVx = Math.cos(this.angle) * this.velocity * this.energy;
+                this.targetVy = Math.sin(this.angle) * this.velocity * this.energy;
+                
+                // Smoothly apply acceleration
+                this.vx += (this.targetVx - this.vx) * this.turnAcceleration;
+                this.vy += (this.targetVy - this.vy) * this.turnAcceleration;
+                
+                // Move the fish
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // Screen wrapping
+                if (this.x < -this.length) this.x = canvas.width + this.length;
+                if (this.x > canvas.width + this.length) this.x = -this.length;
+                if (this.y < -this.length) this.y = canvas.height + this.length;
+                if (this.y > canvas.height + this.length) this.y = -this.length;
+                
+                // Update spine points with spring physics
+                this.updateSpine();
+            }
+            
+            checkForFood() {
+                for (let i = foods.length - 1; i >= 0; i--) {
+                    const food = foods[i];
+                    const dx = food.x - this.x;
+                    const dy = food.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // If close enough to eat
+                    if (dist < this.width) {
+                        // Consume food and gain energy
+                        this.energy = Math.min(1.0, this.energy + food.energy/100);
+                        this.hungry = false;
+                        this.targetChangeTimer = 0;
+                        foods.splice(i, 1);
+                        break;
+                    } else if (dist < 200) {
+                        // Chase nearby food
+                        this.targetX = food.x;
+                        this.targetY = food.y;
+                        this.targetChangeTimer = 10;
+                    }
+                }
+            }
+            
+            updateTarget() {
+                // How long until we change target again
+                this.targetChangeTimer = 100 + Math.random() * 200;
+                
+                // Check for food if hungry
+                if (this.hungry && foods.length > 0) {
+                    let closest = Infinity;
+                    let closestFood = null;
+                    
+                    for (const food of foods) {
+                        const dx = food.x - this.x;
+                        const dy = food.y - this.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (dist < closest && dist < 300) {
+                            closest = dist;
+                            closestFood = food;
+                        }
+                    }
+                    
+                    if (closestFood) {
+                        this.targetX = closestFood.x;
+                        this.targetY = closestFood.y;
+                        return;
+                    }
+                }
+                
+                // If not targeting food, choose a new wandering target
+                // Choose a new target with smooth wandering
+                this.wanderAngle += (Math.random() - 0.5) * 0.3;
+                
+                // Center of canvas plus wander offset
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const wanderRadius = Math.min(canvas.width, canvas.height) * 0.3;
+                
+                this.targetX = centerX + Math.cos(this.wanderAngle) * wanderRadius;
+                this.targetY = centerY + Math.sin(this.wanderAngle) * wanderRadius;
+                
+                // Add some randomness
+                this.targetX += (Math.random() - 0.5) * 200;
+                this.targetY += (Math.random() - 0.5) * 200;
+                
+                // Keep within screen bounds
+                const margin = 100;
+                this.targetX = Math.max(margin, Math.min(canvas.width - margin, this.targetX));
+                this.targetY = Math.max(margin, Math.min(canvas.height - margin, this.targetY));
+            }
+            
+            updateSpine() {
+                // Update first spine point to fish position
+                this.spinePoints[0] = {
+                    x: this.x,
+                    y: this.y,
+                    angle: this.angle
+                };
+                
+                // Update remaining spine points with delay
+                for (let i = 1; i < this.spinePoints.length; i++) {
+                    const prev = this.spinePoints[i-1];
+                    const curr = this.spinePoints[i];
+                    
+                    // Distance between spine points
+                    const segmentLength = this.length / (this.spinePoints.length - 1);
+                    
+                    // Calculate target angle with swim wiggle (stronger when turning)
+                    const turnFactor = Math.abs(this.turnDirection) * 1.5;
+                    const swimWiggle = Math.sin(this.swimPhase - i * 0.3) * 
+                                      this.swimAmplitude * 
+                                      (i / this.spinePoints.length) * 
+                                      (1 + turnFactor);
+                    
+                    const targetAngle = prev.angle + swimWiggle;
+                    
+                    // Smooth angle transition
+                    curr.angle = curr.angle + (targetAngle - curr.angle) * 0.2;
+                    
+                    // Calculate new position based on angle and distance
+                    curr.x = prev.x - Math.cos(curr.angle) * segmentLength;
+                    curr.y = prev.y - Math.sin(curr.angle) * segmentLength;
+                }
+            }
+            
+            draw() {
+                ctx.save();
+                
+                // Luminosity effect with pulsing
+                const glowPulse = 0.7 + Math.sin(this.pulsePhase) * 0.3;
+                ctx.shadowColor = this.color.glow;
+                ctx.shadowBlur = this.glowSize * glowPulse;
+                ctx.globalAlpha = this.glow * glowPulse * Math.max(0.6, this.energy);
+                
+                // Luminous body
+                this.drawBody();
+                
+                // Draw extra glow effect
+                ctx.globalAlpha = 0.4 * glowPulse * Math.max(0.6, this.energy);
+                ctx.shadowBlur = this.glowSize * 1.5;
+                this.drawBody();
+                
+                ctx.restore();
+            }
+            
+            drawBody() {
+                // Calculate points for fish body
+                let points = [];
+                
+                // Draw fish based on spine points
+                for (let i = 0; i < this.spinePoints.length; i++) {
+                    const t = i / (this.spinePoints.length - 1); // Position along spine (0-1)
+                    const spine = this.spinePoints[i];
+                    
+                    // Fish width varies along the length
+                    let width;
+                    if (t < 0.3) {
+                        // Head to middle (thicken)
+                        width = this.width * (0.5 + t * 1.5);
+                    } else {
+                        // Middle to tail (taper)
+                        width = this.width * (1 - (t - 0.3) * 1.4);
+                    }
+                    
+                    // Only add points for the main body (not the tail)
+                    if (i < this.spinePoints.length - 2) {
+                        points.push({
+                            x: spine.x,
+                            y: spine.y,
+                            angle: spine.angle,
+                            width: width
+                        });
+                    }
+                }
+                
+                // Draw smooth fish body
+                ctx.beginPath();
+                
+                // Start from the head
+                ctx.moveTo(points[0].x, points[0].y);
+                
+                // Top curve
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i];
+                    const x = p.x + Math.sin(p.angle) * p.width / 2;
+                    const y = p.y - Math.cos(p.angle) * p.width / 2;
+                    
+                    if (i === 0) {
+                        ctx.lineTo(x, y);
+                    } else {
+                        // Create smooth curve
+                        const prev = points[i-1];
+                        const prevX = prev.x + Math.sin(prev.angle) * prev.width / 2;
+                        const prevY = prev.y - Math.cos(prev.angle) * prev.width / 2;
+                        
+                        const cpX = (prevX + x) / 2;
+                        const cpY = (prevY + y) / 2;
+                        
+                        ctx.quadraticCurveTo(cpX, cpY, x, y);
+                    }
+                }
+                
+                // Add tail tip
+                const lastPoint = this.spinePoints[this.spinePoints.length - 1];
+                ctx.lineTo(lastPoint.x, lastPoint.y);
+                
+                // Bottom curve (in reverse)
+                for (let i = points.length - 1; i >= 0; i--) {
+                    const p = points[i];
+                    const x = p.x - Math.sin(p.angle) * p.width / 2;
+                    const y = p.y + Math.cos(p.angle) * p.width / 2;
+                    
+                    if (i === points.length - 1) {
+                        ctx.lineTo(x, y);
+                    } else {
+                        // Create smooth curve
+                        const next = points[i+1];
+                        const nextX = next.x - Math.sin(next.angle) * next.width / 2;
+                        const nextY = next.y + Math.cos(next.angle) * next.width / 2;
+                        
+                        const cpX = (nextX + x) / 2;
+                        const cpY = (nextY + y) / 2;
+                        
+                        ctx.quadraticCurveTo(cpX, cpY, x, y);
+                    }
+                }
+                
+                ctx.closePath();
+                
+                // Create gradient
+                const gradStart = {
+                    x: this.spinePoints[0].x,
+                    y: this.spinePoints[0].y
+                };
+                
+                const gradEnd = {
+                    x: this.spinePoints[this.spinePoints.length - 1].x,
+                    y: this.spinePoints[this.spinePoints.length - 1].y
+                };
+                
+                const gradient = ctx.createLinearGradient(gradStart.x, gradStart.y, gradEnd.x, gradEnd.y);
+                gradient.addColorStop(0, this.color.main);
+                gradient.addColorStop(0.4, this.lightenColor(this.color.main, 30));
+                gradient.addColorStop(1, this.color.main);
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+            
+            // Utility function to lighten/darken color
+            lightenColor(color, percent) {
+                const num = parseInt(color.slice(1), 16);
+                const amt = Math.round(2.55 * percent);
+                const R = Math.min(255, Math.max(0, (num >> 16) + amt));
+                const G = Math.min(255, Math.max(0, (num >> 8 & 0x00FF) + amt));
+                const B = Math.min(255, Math.max(0, (num & 0x0000FF) + amt));
+                return `#${(0x1000000 + (R << 16) + (G << 8) + B).toString(16).slice(1)}`;
+            }
+            
+            // Shift color hue
+            shiftColorHue(color, degree) {
+                // Convert hex to RGB
+                let r = parseInt(color.substring(1, 3), 16);
+                let g = parseInt(color.substring(3, 5), 16);
+                let b = parseInt(color.substring(5, 7), 16);
+                
+                // Convert RGB to HSL
+                r /= 255;
+                g /= 255;
+                b /= 255;
+                const max = Math.max(r, g, b);
+                const min = Math.min(r, g, b);
+                let h, s, l = (max + min) / 2;
+                
+                if (max === min) {
+                    h = s = 0; // achromatic
+                } else {
+                    const d = max - min;
+                    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                    
+                    switch (max) {
+                        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                        case g: h = (b - r) / d + 2; break;
+                        case b: h = (r - g) / d + 4; break;
+                    }
+                    
+                    h /= 6;
+                }
+                
+                // Shift hue
+                h = (h + degree / 360) % 1;
+                
+                // Convert back to RGB
+                let r1, g1, b1;
+                
+                if (s === 0) {
+                    r1 = g1 = b1 = l; // achromatic
+                } else {
+                    const hue2rgb = (p, q, t) => {
+                        if (t < 0) t += 1;
+                        if (t > 1) t -= 1;
+                        if (t < 1/6) return p + (q - p) * 6 * t;
+                        if (t < 1/2) return q;
+                        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                        return p;
+                    };
+                    
+                    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                    const p = 2 * l - q;
+                    
+                    r1 = hue2rgb(p, q, h + 1/3);
+                    g1 = hue2rgb(p, q, h);
+                    b1 = hue2rgb(p, q, h - 1/3);
+                }
+                
+                // Convert to hex
+                const toHex = x => {
+                    const hex = Math.round(x * 255).toString(16);
+                    return hex.length === 1 ? '0' + hex : hex;
+                };
+                
+                return `#${toHex(r1)}${toHex(g1)}${toHex(b1)}`;
+            }
+        }
+
+        // Create fish
+        const fishCount = 25;
+        const fishes = [];
+
+        for (let i = 0; i < fishCount; i++) {
+            fishes.push(new Fish());
+        }
+
+        // Add fish on right-click
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); // Prevent context menu from appearing
+            
+            if (fishes.length < 50) {
+                const newFish = new Fish();
+                newFish.x = e.clientX;
+                newFish.y = e.clientY;
+                
+                // Initialize spine points
+                for (let i = 0; i < newFish.spinePoints.length; i++) {
+                    newFish.spinePoints[i] = {
+                        x: newFish.x,
+                        y: newFish.y,
+                        angle: newFish.angle
+                    };
+                }
+                
+                fishes.push(newFish);
+            }
+        });
+        
+        // Add food on left-click
+        canvas.addEventListener('click', (e) => {
+            addFood(e.clientX, e.clientY);
+        });
+
+        // Animation loop
+        function animate() {
+            // Clear canvas with gradient background
+            ctx.fillStyle = background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Apply slight motion blur for trailing effect
+            ctx.fillStyle = 'rgba(0, 0, 25, 0.35)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Update food
+            updateFood();
+            
+            // Draw food
+            drawFood();
+            
+            // Update and draw all fish
+            for (const fish of fishes) {
+                fish.update();
+            }
+            
+            // Sort fish by y-position for proper layering
+            fishes.sort((a, b) => a.y - b.y);
+            
+            // Draw all fish
+            for (const fish of fishes) {
+                fish.draw();
+            }
+            
+            // Continue animation
+            requestAnimationFrame(animate);
+        }
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
