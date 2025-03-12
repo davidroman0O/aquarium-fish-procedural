@@ -63,7 +63,7 @@ cd aquarium-fish-procedural
 - More interaction options
 - Environment obstacles
 - Day/night cycle
-- Reproduction? (Implies fishes might die... my fishes NEVER DIES)
+- Reproduction? That implies my fish might die... but my fish NEVER die!
 
 ## License
 
