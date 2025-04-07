@@ -402,6 +402,10 @@
                     vx: (Math.random() - 0.5) * 0.3, // Reduced initial velocity
                     vy: (Math.random() - 0.5) * 0.3, // Reduced initial velocity
                     alpha: 1.0,
+                    // Add scale properties for animation
+                    scale: 0.01, // Start very small
+                    targetScale: 1.0, // Target full size
+                    scaleSpeed: 0.04 + Math.random() * 0.02, // Randomize speed slightly
                     // Each food has slight variation in how it responds to current
                     flowMultiplier: 0.7 + Math.random() * 0.6
                 });
@@ -414,6 +418,17 @@
             
             for (let i = foods.length - 1; i >= 0; i--) {
                 const food = foods[i];
+                
+                // Update scale animation with easing
+                if (food.scale < food.targetScale) {
+                    // Use an ease-out curve for a natural popping effect
+                    food.scale += (food.targetScale - food.scale) * food.scaleSpeed;
+                    
+                    // Ensure we eventually reach target scale
+                    if (food.scale > food.targetScale * 0.98) {
+                        food.scale = food.targetScale;
+                    }
+                }
                 
                 // Apply water resistance/drag
                 food.vx *= 0.98;
@@ -489,21 +504,30 @@
         function drawFood() {
             ctx.save();
             for (const food of foods) {
-                // Draw food with glow
+                // Draw food with glow, using the current scale
+                const currentSize = food.size * food.scale;
+                
                 ctx.globalAlpha = food.alpha;
                 ctx.shadowColor = food.color;
-                ctx.shadowBlur = 5;
+                ctx.shadowBlur = 5 * food.scale; // Scale the glow too
                 ctx.fillStyle = food.color;
                 
                 ctx.beginPath();
-                ctx.arc(food.x, food.y, food.size, 0, Math.PI * 2);
+                ctx.arc(food.x, food.y, currentSize, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Draw highlight
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                ctx.beginPath();
-                ctx.arc(food.x - food.size * 0.3, food.y - food.size * 0.3, food.size * 0.3, 0, Math.PI * 2);
-                ctx.fill();
+                // Draw highlight with proper scaling
+                if (food.scale > 0.3) { // Only draw highlight when food is visible enough
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.beginPath();
+                    ctx.arc(
+                        food.x - currentSize * 0.3, 
+                        food.y - currentSize * 0.3, 
+                        currentSize * 0.3, 
+                        0, Math.PI * 2
+                    );
+                    ctx.fill();
+                }
             }
             ctx.restore();
         }
@@ -571,6 +595,10 @@
                 this.glowSize = 5 + Math.random() * 10;
                 this.pulsePhase = Math.random() * Math.PI * 2;
                 this.pulseSpeed = 0.02 + Math.random() * 0.03;
+                
+                // Add properties for eating animation
+                this.eatEffectTime = 0;
+                this.maxEatEffectTime = 25; // How long the eating effect lasts
             }
             
             chooseColor() {
@@ -725,6 +753,11 @@
                 
                 // Update spine points with spring physics
                 this.updateSpine();
+                
+                // Decrease eat effect timer if active
+                if (this.eatEffectTime > 0) {
+                    this.eatEffectTime--;
+                }
             }
             
             checkForFood() {
@@ -740,6 +773,13 @@
                         this.energy = Math.min(1.0, this.energy + food.energy/100);
                         this.hungry = false;
                         this.targetChangeTimer = 0;
+                        
+                        // Trigger eating animation effect
+                        this.eatEffectTime = this.maxEatEffectTime;
+                        
+                        // Create particle effect at food location
+                        createEatingEffect(food.x, food.y, food.color);
+                        
                         foods.splice(i, 1);
                         break;
                     } else if (dist < 200) {
@@ -837,24 +877,34 @@
             draw() {
                 ctx.save();
                 
+                // Calculate additional glow boost when eating
+                let eatBoost = 0;
+                if (this.eatEffectTime > 0) {
+                    // Create a pulse effect that rises quickly and fades
+                    eatBoost = Math.sin((this.maxEatEffectTime - this.eatEffectTime) / this.maxEatEffectTime * Math.PI) * 1.5;
+                }
+                
                 // Luminosity effect with pulsing
                 const glowPulse = 0.7 + Math.sin(this.pulsePhase) * 0.3;
                 ctx.shadowColor = this.color.glow;
-                ctx.shadowBlur = this.glowSize * glowPulse;
-                ctx.globalAlpha = this.glow * glowPulse * Math.max(0.6, this.energy);
+                ctx.shadowBlur = (this.glowSize + eatBoost * 5) * glowPulse; // Larger glow when eating
+                ctx.globalAlpha = (this.glow + eatBoost * 0.2) * glowPulse * Math.max(0.6, this.energy);
                 
                 // Luminous body
-                this.drawBody();
+                this.drawBody(eatBoost);
                 
                 // Draw extra glow effect
-                ctx.globalAlpha = 0.4 * glowPulse * Math.max(0.6, this.energy);
-                ctx.shadowBlur = this.glowSize * 1.5;
-                this.drawBody();
+                ctx.globalAlpha = (0.4 + eatBoost * 0.3) * glowPulse * Math.max(0.6, this.energy);
+                ctx.shadowBlur = (this.glowSize + eatBoost * 8) * 1.5;
+                this.drawBody(eatBoost);
                 
                 ctx.restore();
             }
             
-            drawBody() {
+            drawBody(eatBoost = 0) {
+                // Scale boost for when fish eats (subtle size increase)
+                const sizeBoost = 1 + eatBoost * 0.1;
+                
                 // Calculate points for fish body
                 let points = [];
                 
@@ -867,10 +917,10 @@
                     let width;
                     if (t < 0.3) {
                         // Head to middle (thicken)
-                        width = this.width * (0.5 + t * 1.5);
+                        width = this.width * (0.5 + t * 1.5) * sizeBoost;
                     } else {
                         // Middle to tail (taper)
-                        width = this.width * (1 - (t - 0.3) * 1.4);
+                        width = this.width * (1 - (t - 0.3) * 1.4) * sizeBoost;
                     }
                     
                     // Only add points for the main body (not the tail)
@@ -1042,6 +1092,75 @@
             fishes.push(new Fish());
         }
 
+        // Add a particle system for food consumption animation
+        const eatingParticles = [];
+        
+        function createEatingEffect(x, y, color) {
+            // Create a burst of particles
+            const particleCount = 6 + Math.floor(Math.random() * 4); // 6-9 particles
+            
+            for (let i = 0; i < particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 0.2 + Math.random() * 0.6;
+                
+                eatingParticles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 1 + Math.random() * 1.5,
+                    color: color,
+                    alpha: 1.0,
+                    // Add a slight upward drift (bubbles rise)
+                    drift: 0.01 + Math.random() * 0.03,
+                    // Each particle lives for a slightly different time
+                    life: 30 + Math.random() * 20
+                });
+            }
+        }
+        
+        function updateEatingParticles() {
+            for (let i = eatingParticles.length - 1; i >= 0; i--) {
+                const particle = eatingParticles[i];
+                
+                // Move the particle
+                particle.x += particle.vx;
+                particle.y += particle.vy - particle.drift; // Apply upward drift
+                
+                // Slow down
+                particle.vx *= 0.96;
+                particle.vy *= 0.96;
+                
+                // Reduce life and fade out
+                particle.life--;
+                if (particle.life < 15) {
+                    particle.alpha = particle.life / 15;
+                }
+                
+                // Remove dead particles
+                if (particle.life <= 0) {
+                    eatingParticles.splice(i, 1);
+                }
+            }
+        }
+        
+        function drawEatingParticles() {
+            ctx.save();
+            
+            for (const particle of eatingParticles) {
+                ctx.globalAlpha = particle.alpha;
+                ctx.fillStyle = particle.color;
+                ctx.shadowColor = particle.color;
+                ctx.shadowBlur = 3;
+                
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            ctx.restore();
+        }
+
         // Add fish on right-click (desktop only)
         canvas.addEventListener('contextmenu', (e) => {
             if (isMobile) return; // Skip on mobile devices
@@ -1087,6 +1206,10 @@
             
             // Draw food
             drawFood();
+            
+            // Update and draw eating particles
+            updateEatingParticles();
+            drawEatingParticles();
             
             // Update and draw all fish
             for (const fish of fishes) {
