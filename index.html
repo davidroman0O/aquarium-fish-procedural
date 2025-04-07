@@ -169,6 +169,7 @@
         </svg>
     </a>
     
+     
     <div id="info-panel" class="info-panel">
         <button id="minimize-btn" class="minimize-btn">×</button>
         <h3>Luminous Fish Simulation</h3>
@@ -203,156 +204,61 @@
         <p><strong>GitHub:</strong> <a href="https://github.com/davidroman0O/aquarium-fish-procedural" target="_blank">davidroman0O/aquarium-fish-procedural</a></p>
     </div>
     
-    <div id="show-info" class="show-info">Show Info</div>
+
+    <script src="workerController.js"></script>
     
     <script>
-        // Canvas setup
+        // Mobile detection
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        // Set up the canvas
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-
-        // Device detection
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 800;
         
-        // Show appropriate controls info based on device
-        if (isMobile) {
-            document.getElementById('desktop-controls').style.display = 'none';
-            document.getElementById('mobile-controls').style.display = 'block';
-        }
-
-        // Handle window resize
-        window.addEventListener('resize', () => {
+        // Make canvas fill the window
+        function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            background = createBackground();
-        });
-
-        // Mouse position tracking
+            createBackground(); // Recreate background on resize
+        }
+        
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // Mouse state tracking
         let mouseX = canvas.width / 2;
         let mouseY = canvas.height / 2;
-        let mouseInfluence = false;
         let pmouseX = mouseX;
         let pmouseY = mouseY;
+        let mouseInfluence = false;
         
-        // Variables for double-tap detection
-        let lastTapTime = 0;
-        let lastTapX = 0;
-        let lastTapY = 0;
-        const doubleTapDelay = 300; // ms
-        
+        // Track mouse position
         canvas.addEventListener('mousemove', (e) => {
-            if (isMobile) return; // Skip on mobile devices
-            
             pmouseX = mouseX;
             pmouseY = mouseY;
             mouseX = e.clientX;
             mouseY = e.clientY;
             mouseInfluence = true;
             
-            // Reset mouse influence after some time
-            clearTimeout(window.mouseTimer);
-            window.mouseTimer = setTimeout(() => {
+            // Reset mouse influence after a short delay
+            clearTimeout(mouseInfluenceTimer);
+            mouseInfluenceTimer = setTimeout(() => {
                 mouseInfluence = false;
-            }, 5000);
+            }, 100);
         });
         
-        // Touch events for mobile
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (e.touches.length > 0) {
-                const touch = e.touches[0];
-                
-                pmouseX = mouseX;
-                pmouseY = mouseY;
-                mouseX = touch.clientX;
-                mouseY = touch.clientY;
-                mouseInfluence = true;
-                
-                // Check for double tap
-                const currentTime = new Date().getTime();
-                const tapLength = currentTime - lastTapTime;
-                const x = touch.clientX;
-                const y = touch.clientY;
-                const distanceX = Math.abs(x - lastTapX);
-                const distanceY = Math.abs(y - lastTapY);
-                
-                if (tapLength < doubleTapDelay && distanceX < 30 && distanceY < 30) {
-                    // Double tap detected - add fish
-                    if (fishes.length < 150) {
-                        const newFish = new Fish();
-                        newFish.x = x;
-                        newFish.y = y;
-                        
-                        // Initialize spine points
-                        for (let i = 0; i < newFish.spinePoints.length; i++) {
-                            newFish.spinePoints[i] = {
-                                x: newFish.x,
-                                y: newFish.y,
-                                angle: newFish.angle
-                            };
-                        }
-                        
-                        fishes.push(newFish);
-                    }
-                    lastTapTime = 0; // Reset to prevent triple-tap
-                } else {
-                    // Single tap (will be handled on touchend if not part of a double tap)
-                    lastTapTime = currentTime;
-                    lastTapX = x;
-                    lastTapY = y;
-                }
-            }
-        });
+        let mouseInfluenceTimer;
         
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            if (e.touches.length > 0) {
-                const touch = e.touches[0];
-                
-                pmouseX = mouseX;
-                pmouseY = mouseY;
-                mouseX = touch.clientX;
-                mouseY = touch.clientY;
-                mouseInfluence = true;
-                
-                // Reset mouse influence after some time
-                clearTimeout(window.mouseTimer);
-                window.mouseTimer = setTimeout(() => {
-                    mouseInfluence = false;
-                }, 5000);
-                
-                // This will make sure long touches don't create food
-                lastTapTime = 0;
-            }
-        });
-        
-        canvas.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            
-            // Check if this was a simple tap (not part of a gesture or double-tap)
-            const currentTime = new Date().getTime();
-            if (lastTapTime > 0 && currentTime - lastTapTime < doubleTapDelay) {
-                // This could be the first tap of a double-tap, so we wait
-                setTimeout(() => {
-                    // If enough time has passed and lastTapTime hasn't been reset by a double-tap
-                    if (lastTapTime > 0 && new Date().getTime() - lastTapTime >= doubleTapDelay) {
-                        // It's a single tap - add food
-                        addFood(lastTapX, lastTapY);
-                        lastTapTime = 0;
-                    }
-                }, doubleTapDelay);
-            }
-        });
-        
-        // Create background gradient
+        // Create a background with a subtle gradient
         function createBackground() {
             const gradient = ctx.createRadialGradient(
                 canvas.width / 2, canvas.height / 2, 0,
                 canvas.width / 2, canvas.height / 2, canvas.width / 1.5
             );
-            gradient.addColorStop(0, '#000830');
-            gradient.addColorStop(1, '#000010');
+            
+            gradient.addColorStop(0, '#060a0f');
+            gradient.addColorStop(1, '#03050a');
+            
             return gradient;
         }
 
@@ -373,27 +279,13 @@
             changeTimer: 200
         };
 
-        function updateWaterFlow() {
-            // Smoothly move toward target flow
-            waterFlow.vx += (waterFlow.targetVx - waterFlow.vx) * 0.005;
-            waterFlow.vy += (waterFlow.targetVy - waterFlow.vy) * 0.005;
-            
-            // Decide if we need a new target
-            waterFlow.changeTimer--;
-            if (waterFlow.changeTimer <= 0) {
-                // Reduced target variation for gentler flow
-                waterFlow.targetVx = (Math.random() - 0.5) * 0.05;
-                waterFlow.targetVy = (Math.random() - 0.5) * 0.05;
-                waterFlow.changeTimer = 200 + Math.random() * 300;
-            }
-        }
-        
         // Food system
         const foods = [];
         
         function addFood(x, y) {
+            const newFoods = [];
             for (let i = 0; i < 5; i++) {
-                foods.push({
+                newFoods.push({
                     x: x + (Math.random() - 0.5) * 20,
                     y: y + (Math.random() - 0.5) * 20,
                     size: 3 + Math.random() * 2,
@@ -410,128 +302,11 @@
                     flowMultiplier: 0.7 + Math.random() * 0.6
                 });
             }
-        }
-        
-        function updateFood() {
-            // Update the overall water flow
-            updateWaterFlow();
             
-            for (let i = foods.length - 1; i >= 0; i--) {
-                const food = foods[i];
-                
-                // Update scale animation with easing
-                if (food.scale < food.targetScale) {
-                    // Use an ease-out curve for a natural popping effect
-                    food.scale += (food.targetScale - food.scale) * food.scaleSpeed;
-                    
-                    // Ensure we eventually reach target scale
-                    if (food.scale > food.targetScale * 0.98) {
-                        food.scale = food.targetScale;
-                    }
-                }
-                
-                // Apply water resistance/drag
-                food.vx *= 0.98;
-                food.vy *= 0.98;
-                
-                // Apply base water flow with variation
-                food.vx += (waterFlow.baseVx + waterFlow.vx) * food.flowMultiplier;
-                food.vy += (waterFlow.baseVy + waterFlow.vy) * food.flowMultiplier;
-                
-                // Add some random movement to simulate particles in water
-                food.vx += (Math.random() - 0.5) * 0.01; // Reduce random movement
-                food.vy += (Math.random() - 0.5) * 0.01; // Reduce random movement
-                
-                // Add very slight mouse influence if it's moving
-                if (mouseInfluence) {
-                    const dx = mouseX - pmouseX;
-                    const dy = mouseY - pmouseY;
-                    const mouseVelocity = Math.sqrt(dx*dx + dy*dy);
-                    
-                    if (mouseVelocity > 0) {
-                        // Cap the mouse velocity to prevent extremely violent movements
-                        const cappedDx = dx * Math.min(1, 2/mouseVelocity);
-                        const cappedDy = dy * Math.min(1, 2/mouseVelocity);
-                        
-                        const mouseDist = Math.sqrt(
-                            (food.x - mouseX) * (food.x - mouseX) + 
-                            (food.y - mouseY) * (food.y - mouseY)
-                        );
-                        
-                        if (mouseDist < 80) {
-                            const influence = (1 - mouseDist / 80) * 0.001;
-                            food.vx += cappedDx * influence;
-                            food.vy += cappedDy * influence;
-                        }
-                    }
-                }
-                
-                // Cap maximum velocity to make it easier for fish to catch
-                const maxVelocity = 0.7; // Maximum speed limit
-                const currentVelocity = Math.sqrt(food.vx * food.vx + food.vy * food.vy);
-                if (currentVelocity > maxVelocity) {
-                    food.vx = (food.vx / currentVelocity) * maxVelocity;
-                    food.vy = (food.vy / currentVelocity) * maxVelocity;
-                }
-                
-                // Update position
-                food.x += food.vx;
-                food.y += food.vy;
-                
-                // Fade out if near edges
-                const edgeDistance = Math.min(
-                    food.x, 
-                    food.y, 
-                    canvas.width - food.x, 
-                    canvas.height - food.y
-                );
-                
-                if (edgeDistance < 20) {
-                    food.alpha -= 0.02;
-                }
-                
-                // Remove if fully faded or off screen
-                if (food.alpha <= 0 || 
-                    food.x < -10 || 
-                    food.x > canvas.width + 10 || 
-                    food.y < -10 || 
-                    food.y > canvas.height + 10) {
-                    foods.splice(i, 1);
-                }
-            }
+            // Add to the worker controller
+            workerController.addFoods(newFoods);
         }
-        
-        function drawFood() {
-            ctx.save();
-            for (const food of foods) {
-                // Draw food with glow, using the current scale
-                const currentSize = food.size * food.scale;
-                
-                ctx.globalAlpha = food.alpha;
-                ctx.shadowColor = food.color;
-                ctx.shadowBlur = 5 * food.scale; // Scale the glow too
-                ctx.fillStyle = food.color;
-                
-                ctx.beginPath();
-                ctx.arc(food.x, food.y, currentSize, 0, Math.PI * 2);
-                ctx.fill();
-                
-                // Draw highlight with proper scaling
-                if (food.scale > 0.3) { // Only draw highlight when food is visible enough
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-                    ctx.beginPath();
-                    ctx.arc(
-                        food.x - currentSize * 0.3, 
-                        food.y - currentSize * 0.3, 
-                        currentSize * 0.3, 
-                        0, Math.PI * 2
-                    );
-                    ctx.fill();
-                }
-            }
-            ctx.restore();
-        }
-        
+
         // Luminous fish class with improved movement
         class Fish {
             constructor() {
@@ -761,6 +536,7 @@
             }
             
             checkForFood() {
+                const foods = workerController.getFoods();
                 for (let i = foods.length - 1; i >= 0; i--) {
                     const food = foods[i];
                     const dx = food.x - this.x;
@@ -780,7 +556,7 @@
                         // Create particle effect at food location
                         createEatingEffect(food.x, food.y, food.color);
                         
-                        foods.splice(i, 1);
+                        workerController.removeFood(i);
                         break;
                     } else if (dist < 200) {
                         // Chase nearby food
@@ -796,6 +572,7 @@
                 this.targetChangeTimer = 100 + Math.random() * 200;
                 
                 // Check for food if hungry
+                const foods = workerController.getFoods();
                 if (this.hungry && foods.length > 0) {
                     let closest = Infinity;
                     let closestFood = null;
@@ -1092,59 +869,123 @@
             fishes.push(new Fish());
         }
 
-        // Add a particle system for food consumption animation
-        const eatingParticles = [];
+        // FPS counter variables
+        let lastFrameTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+        let fpsUpdateInterval = 500; // Update FPS display every 500ms
+        let lastFpsUpdate = 0;
+
+        // Create FPS display element
+        const fpsCounter = document.createElement('div');
+        fpsCounter.style.position = 'absolute';
+        fpsCounter.style.top = '10px';
+        fpsCounter.style.right = '10px';
+        fpsCounter.style.backgroundColor = 'rgba(0, 0, 20, 0.7)';
+        fpsCounter.style.color = '#00ffff';
+        fpsCounter.style.padding = '5px 10px';
+        fpsCounter.style.borderRadius = '4px';
+        fpsCounter.style.fontFamily = 'monospace';
+        fpsCounter.style.fontSize = '14px';
+        fpsCounter.style.zIndex = '1000';
+        document.body.appendChild(fpsCounter);
         
-        function createEatingEffect(x, y, color) {
-            // Create a burst of particles
-            const particleCount = 6 + Math.floor(Math.random() * 4); // 6-9 particles
+        // Initialize the worker controller
+        const workerController = new WorkerController();
+        
+        // Set initial data
+        workerController.setFishes(fishes);
+        workerController.setWaterFlow(waterFlow);
+        workerController.setFoods(foods);
+
+        // Drawing functions - these remain on the main thread
+        function drawFlowParticles() {
+            const flowParticles = workerController.getFlowParticles();
             
-            for (let i = 0; i < particleCount; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const speed = 0.2 + Math.random() * 0.6;
-                
-                eatingParticles.push({
-                    x: x,
-                    y: y,
-                    vx: Math.cos(angle) * speed,
-                    vy: Math.sin(angle) * speed,
-                    size: 1 + Math.random() * 1.5,
-                    color: color,
-                    alpha: 1.0,
-                    // Add a slight upward drift (bubbles rise)
-                    drift: 0.01 + Math.random() * 0.03,
-                    // Each particle lives for a slightly different time
-                    life: 30 + Math.random() * 20
-                });
-            }
-        }
-        
-        function updateEatingParticles() {
-            for (let i = eatingParticles.length - 1; i >= 0; i--) {
-                const particle = eatingParticles[i];
-                
-                // Move the particle
-                particle.x += particle.vx;
-                particle.y += particle.vy - particle.drift; // Apply upward drift
-                
-                // Slow down
-                particle.vx *= 0.96;
-                particle.vy *= 0.96;
-                
-                // Reduce life and fade out
-                particle.life--;
-                if (particle.life < 15) {
-                    particle.alpha = particle.life / 15;
-                }
-                
-                // Remove dead particles
-                if (particle.life <= 0) {
-                    eatingParticles.splice(i, 1);
+            ctx.save();
+            
+            // Batch similar particles for better rendering performance
+            
+            // First draw regular particles (no glow, simple circles)
+            ctx.shadowBlur = 0;
+            for (const particle of flowParticles) {
+                if (!particle.glow && particle.shape === 0) {
+                    ctx.globalAlpha = particle.alpha;
+                    ctx.fillStyle = particle.color;
+                    
+                    ctx.beginPath();
+                    ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                    ctx.fill();
                 }
             }
+            
+            // Then draw tracer particles with glow (more expensive)
+            for (const particle of flowParticles) {
+                if (particle.glow || particle.shape !== 0) {
+                    ctx.globalAlpha = particle.alpha;
+                    
+                    // Apply glow only for traced particles
+                    if (particle.glow) {
+                        ctx.shadowColor = particle.color;
+                        ctx.shadowBlur = 3; // Reduced blur size
+                    } else {
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    ctx.fillStyle = particle.color;
+                    ctx.strokeStyle = particle.color;
+                    
+                    // Draw trail (if it exists)
+                    if (particle.isTracer && particle.trail && particle.trail.length > 0) {
+                        ctx.beginPath();
+                        ctx.moveTo(particle.x, particle.y);
+                        
+                        // Simplified trail - no alpha calculations per segment
+                        for (const point of particle.trail) {
+                            ctx.lineTo(point.x, point.y);
+                        }
+                        
+                        ctx.lineWidth = particle.size * 0.6;
+                        ctx.stroke();
+                    }
+                    
+                    // Draw the particle itself
+                    if (particle.shape === 0) { // Circle
+                        ctx.beginPath();
+                        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                        ctx.fill();
+                    } else { // Line
+                        if (particle.vx !== 0 || particle.vy !== 0) {
+                            const angle = Math.atan2(particle.vy, particle.vx);
+                            const length = particle.size * 2;
+                            
+                            ctx.beginPath();
+                            ctx.moveTo(
+                                particle.x - Math.cos(angle) * length, 
+                                particle.y - Math.sin(angle) * length
+                            );
+                            ctx.lineTo(
+                                particle.x + Math.cos(angle) * length, 
+                                particle.y + Math.sin(angle) * length
+                            );
+                            ctx.lineWidth = particle.size * 0.7;
+                            ctx.stroke();
+                        } else {
+                            // Fallback to circle
+                            ctx.beginPath();
+                            ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                }
+            }
+            
+            ctx.restore();
         }
-        
+
         function drawEatingParticles() {
+            const eatingParticles = workerController.getEatingParticles();
+            
             ctx.save();
             
             for (const particle of eatingParticles) {
@@ -1160,6 +1001,95 @@
             
             ctx.restore();
         }
+        
+        function drawFood() {
+            const foods = workerController.getFoods();
+            
+            ctx.save();
+            for (const food of foods) {
+                // Draw food with glow, using the current scale
+                const currentSize = food.size * food.scale;
+                
+                ctx.globalAlpha = food.alpha;
+                ctx.shadowColor = food.color;
+                ctx.shadowBlur = 5 * food.scale; // Scale the glow too
+                ctx.fillStyle = food.color;
+                
+                ctx.beginPath();
+                ctx.arc(food.x, food.y, currentSize, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw highlight with proper scaling
+                if (food.scale > 0.3) { // Only draw highlight when food is visible enough
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.beginPath();
+                    ctx.arc(
+                        food.x - currentSize * 0.3, 
+                        food.y - currentSize * 0.3, 
+                        currentSize * 0.3, 
+                        0, Math.PI * 2
+                    );
+                    ctx.fill();
+                }
+            }
+            ctx.restore();
+        }
+
+        // Create eating effect - now handled by worker controller
+        function createEatingEffect(x, y, color) {
+            workerController.createEatingEffect(x, y, color);
+        }
+
+        // Ambient flow particles system
+        const maxFlowParticles = 80;
+
+        function createFlowParticles() {
+            // Initialize with fewer particles to start
+            const initialParticles = [];
+            for (let i = 0; i < maxFlowParticles * 0.6; i++) {
+                initialParticles.push(createFlowParticle());
+            }
+            workerController.setFlowParticles(initialParticles);
+        }
+
+        function createFlowParticle() {
+            // Simplified particle system - just two types for better performance
+            const isTracer = Math.random() < 0.15; // Fewer special particles (15%)
+            
+            // Create particle at random position, but not too close to edges
+            const margin = 50;
+            return {
+                x: margin + Math.random() * (canvas.width - margin * 2),
+                y: margin + Math.random() * (canvas.height - margin * 2),
+                // More uniform sizes
+                size: isTracer ? 1.5 + Math.random() * 1.5 : 0.8 + Math.random() * 1,
+                // Simplified colors - fewer unique color calculations
+                color: isTracer 
+                    ? `hsla(190, 90%, 80%, ${0.3 + Math.random() * 0.2})` 
+                    : `hsla(185, 85%, 75%, ${0.15 + Math.random() * 0.15})`,
+                vx: 0,
+                vy: 0,
+                // Simplified flow parameters
+                flowMultiplier: 0.3 + Math.random() * 0.7,
+                depthFactor: 0.6 + Math.random() * 1.2,
+                // Simplified fade properties
+                alpha: 0,
+                targetAlpha: isTracer ? 0.4 : 0.2 + Math.random() * 0.15,
+                fadeSpeed: 0.01, // Faster fade for fewer update calculations
+                // Simplified glow - only tracers glow
+                glow: isTracer,
+                // Simplified trail system
+                isTracer: isTracer,
+                // Shorter trails for performance
+                trailLength: isTracer ? 3 : 0,
+                trail: [], // Will store previous positions
+                // Fewer shape variations
+                shape: isTracer ? (Math.random() > 0.5 ? 1 : 0) : 0,
+                // Simpler lifetime
+                lifetime: isTracer ? 400 + Math.random() * 300 : 200 + Math.random() * 300,
+                age: 0
+            };
+        }
 
         // Add fish on right-click (desktop only)
         canvas.addEventListener('contextmenu', (e) => {
@@ -1167,6 +1097,7 @@
             
             e.preventDefault(); // Prevent context menu from appearing
             
+            const fishes = workerController.getFishes();
             if (fishes.length < 150) {
                 const newFish = new Fish();
                 newFish.x = e.clientX;
@@ -1181,7 +1112,7 @@
                     };
                 }
                 
-                fishes.push(newFish);
+                workerController.addFish(newFish);
             }
         });
         
@@ -1192,7 +1123,50 @@
         });
 
         // Animation loop
-        function animate() {
+        function animate(timestamp) {
+            // Calculate FPS
+            if (!lastFrameTime) {
+                lastFrameTime = timestamp;
+                lastFpsUpdate = timestamp;
+            }
+            
+            const deltaTime = timestamp - lastFrameTime;
+            lastFrameTime = timestamp;
+            
+            // Increment frame count
+            frameCount++;
+            
+            // Update FPS display every interval
+            if (timestamp - lastFpsUpdate >= fpsUpdateInterval) {
+                // Calculate average fps over the interval
+                fps = Math.round((frameCount * 1000) / (timestamp - lastFpsUpdate));
+                fpsCounter.textContent = `FPS: ${fps}`;
+                
+                // Reset counters
+                frameCount = 0;
+                lastFpsUpdate = timestamp;
+            }
+
+            // Delegate calculation tasks to the worker controller
+            workerController.updateFlowParticles(
+                canvas.width, canvas.height,
+                mouseInfluence, mouseX, mouseY, pmouseX, pmouseY
+            );
+            
+            workerController.updateFood(
+                canvas.width, canvas.height,
+                mouseInfluence, mouseX, mouseY, pmouseX, pmouseY
+            );
+            
+            workerController.updateEatingParticles(
+                canvas.width, canvas.height
+            );
+            
+            workerController.updateFishes(
+                canvas.width, canvas.height,
+                mouseInfluence, mouseX, mouseY, pmouseX, pmouseY
+            );
+
             // Clear canvas with gradient background
             ctx.fillStyle = background;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1201,35 +1175,176 @@
             ctx.fillStyle = 'rgba(0, 0, 25, 0.35)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Update food
-            updateFood();
+            // Draw flow particles (behind everything)
+            drawFlowParticles();
             
             // Draw food
             drawFood();
             
-            // Update and draw eating particles
-            updateEatingParticles();
+            // Draw eating particles
             drawEatingParticles();
             
-            // Update and draw all fish
-            for (const fish of fishes) {
-                fish.update();
-            }
+            // Get current fishes from worker controller
+            const fishesData = workerController.getFishes();
             
             // Sort fish by y-position for proper layering
-            fishes.sort((a, b) => a.y - b.y);
+            const sortedFishesData = [...fishesData].sort((a, b) => a.y - b.y);
             
-            // Draw all fish
-            for (const fish of fishes) {
-                fish.draw();
+            // Draw all fish - manually drawing instead of using fish.draw()
+            for (const fishData of sortedFishesData) {
+                drawFish(fishData);
             }
             
             // Continue animation
             requestAnimationFrame(animate);
         }
+        
+        // Create a function to draw fish based on fish data
+        function drawFish(fishData) {
+            const eatBoost = fishData.eatEffectTime > 0 ? 
+                Math.sin((fishData.maxEatEffectTime - fishData.eatEffectTime) / fishData.maxEatEffectTime * Math.PI) * 1.5 : 0;
+            
+            ctx.save();
+            
+            // Luminosity effect with pulsing
+            const glowPulse = 0.7 + Math.sin(fishData.pulsePhase) * 0.3;
+            ctx.shadowColor = fishData.color.glow;
+            ctx.shadowBlur = (fishData.glowSize + eatBoost * 5) * glowPulse; // Larger glow when eating
+            ctx.globalAlpha = (fishData.glow + eatBoost * 0.2) * glowPulse * Math.max(0.6, fishData.energy);
+            
+            // Luminous body
+            drawFishBody(fishData, eatBoost);
+            
+            // Draw extra glow effect
+            ctx.globalAlpha = (0.4 + eatBoost * 0.3) * glowPulse * Math.max(0.6, fishData.energy);
+            ctx.shadowBlur = (fishData.glowSize + eatBoost * 8) * 1.5;
+            drawFishBody(fishData, eatBoost);
+            
+            ctx.restore();
+        }
+        
+        function drawFishBody(fishData, eatBoost = 0) {
+            // Scale boost for when fish eats (subtle size increase)
+            const sizeBoost = 1 + eatBoost * 0.1;
+            
+            // Calculate points for fish body
+            let points = [];
+            
+            // Draw fish based on spine points
+            for (let i = 0; i < fishData.spinePoints.length; i++) {
+                const t = i / (fishData.spinePoints.length - 1); // Position along spine (0-1)
+                const spine = fishData.spinePoints[i];
+                
+                // Fish width varies along the length
+                let width;
+                if (t < 0.3) {
+                    // Head to middle (thicken)
+                    width = fishData.width * (0.5 + t * 1.5) * sizeBoost;
+                } else {
+                    // Middle to tail (taper)
+                    width = fishData.width * (1 - (t - 0.3) * 1.4) * sizeBoost;
+                }
+                
+                // Only add points for the main body (not the tail)
+                if (i < fishData.spinePoints.length - 2) {
+                    points.push({
+                        x: spine.x,
+                        y: spine.y,
+                        angle: spine.angle,
+                        width: width
+                    });
+                }
+            }
+            
+            // Draw smooth fish body
+            ctx.beginPath();
+            
+            // Start from the head
+            ctx.moveTo(points[0].x, points[0].y);
+            
+            // Top curve
+            for (let i = 0; i < points.length; i++) {
+                const p = points[i];
+                const x = p.x + Math.sin(p.angle) * p.width / 2;
+                const y = p.y - Math.cos(p.angle) * p.width / 2;
+                
+                if (i === 0) {
+                    ctx.lineTo(x, y);
+                } else {
+                    // Create smooth curve
+                    const prev = points[i-1];
+                    const prevX = prev.x + Math.sin(prev.angle) * prev.width / 2;
+                    const prevY = prev.y - Math.cos(prev.angle) * prev.width / 2;
+                    
+                    const cpX = (prevX + x) / 2;
+                    const cpY = (prevY + y) / 2;
+                    
+                    ctx.quadraticCurveTo(cpX, cpY, x, y);
+                }
+            }
+            
+            // Add tail tip
+            const lastPoint = fishData.spinePoints[fishData.spinePoints.length - 1];
+            ctx.lineTo(lastPoint.x, lastPoint.y);
+            
+            // Bottom curve (in reverse)
+            for (let i = points.length - 1; i >= 0; i--) {
+                const p = points[i];
+                const x = p.x - Math.sin(p.angle) * p.width / 2;
+                const y = p.y + Math.cos(p.angle) * p.width / 2;
+                
+                if (i === points.length - 1) {
+                    ctx.lineTo(x, y);
+                } else {
+                    // Create smooth curve
+                    const next = points[i+1];
+                    const nextX = next.x - Math.sin(next.angle) * next.width / 2;
+                    const nextY = next.y + Math.cos(next.angle) * next.width / 2;
+                    
+                    const cpX = (nextX + x) / 2;
+                    const cpY = (nextY + y) / 2;
+                    
+                    ctx.quadraticCurveTo(cpX, cpY, x, y);
+                }
+            }
+            
+            ctx.closePath();
+            
+            // Create gradient
+            const gradStart = {
+                x: fishData.spinePoints[0].x,
+                y: fishData.spinePoints[0].y
+            };
+            
+            const gradEnd = {
+                x: fishData.spinePoints[fishData.spinePoints.length - 1].x,
+                y: fishData.spinePoints[fishData.spinePoints.length - 1].y
+            };
+            
+            const gradient = ctx.createLinearGradient(gradStart.x, gradStart.y, gradEnd.x, gradEnd.y);
+            gradient.addColorStop(0, fishData.color.main);
+            gradient.addColorStop(0.4, lightenColor(fishData.color.main, 30));
+            gradient.addColorStop(1, fishData.color.main);
+            
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+        
+        // Utility function to lighten/darken color
+        function lightenColor(color, percent) {
+            const num = parseInt(color.slice(1), 16);
+            const amt = Math.round(2.55 * percent);
+            const R = Math.min(255, Math.max(0, (num >> 16) + amt));
+            const G = Math.min(255, Math.max(0, (num >> 8 & 0x00FF) + amt));
+            const B = Math.min(255, Math.max(0, (num & 0x0000FF) + amt));
+            return `#${(0x1000000 + (R << 16) + (G << 8) + B).toString(16).slice(1)}`;
+        }
 
-        // Start animation
-        animate();
+        // Initialize the ambient flow particles
+        createFlowParticles();
+
+        // Start animation with timestamp
+        requestAnimationFrame(animate);
         
         // Handle info panel toggle
         document.addEventListener('DOMContentLoaded', function() {
