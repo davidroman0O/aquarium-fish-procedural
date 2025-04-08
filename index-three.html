@@ -256,8 +256,8 @@
                 waterFlow.vortices.push({
                     x: (Math.random() - 0.5) * bounds * 1.5,
                     y: (Math.random() - 0.5) * viewSize * 1.5,
-                    strength: (Math.random() - 0.5) * 0.2, // Reduced from 0.4
-                    radius: 80 + Math.random() * 100 // Increased minimum size for gentler gradient
+                    strength: (Math.random() - 0.5) * 0.15, // Reduced from 0.2
+                    radius: 100 + Math.random() * 120 // Increased size for even gentler gradient
                 });
             }
         }
@@ -290,12 +290,12 @@
         // Calculate flow at a specific position by interpolating from the grid
         function getFlowAtPosition(x, y) {
             // Base flow - further reduced base values
-            let flowX = waterFlow.baseVx * 0.75; // Further reduced base flow
-            let flowY = waterFlow.baseVy * 0.75; // Further reduced base flow
+            let flowX = waterFlow.baseVx * 0.5; // Further reduced base flow
+            let flowY = waterFlow.baseVy * 0.5; // Further reduced base flow
             
             // Add current variation with reduced impact
-            flowX += waterFlow.vx * 0.5; // Only 50% of the variation
-            flowY += waterFlow.vy * 0.5; // Only 50% of the variation
+            flowX += waterFlow.vx * 0.3; // Reduced from 0.5 to 0.3
+            flowY += waterFlow.vy * 0.3; // Reduced from 0.5 to 0.3
             
             // Add vortex influence - reduced strength
             for (const vortex of waterFlow.vortices) {
@@ -309,8 +309,8 @@
                     const factor = (1 - dist/vortex.radius) * (dist / (vortex.radius/5));
                     
                     // Perpendicular flow for vortex - further reduced effect
-                    flowX += -dy * factor * vortex.strength * 0.003; // Reduced from 0.005
-                    flowY += dx * factor * vortex.strength * 0.003; // Reduced from 0.005
+                    flowX += -dy * factor * vortex.strength * 0.002; // Reduced from 0.003
+                    flowY += dx * factor * vortex.strength * 0.002; // Reduced from 0.003
                 }
             }
             
@@ -325,10 +325,10 @@
                 
                 if (dist < 100 && mouseSpeed > 0.1) {
                     // Further reduced factor for extremely gentle influence
-                    const factor = (1 - dist/100) * 0.001; // Reduced from 0.0025
+                    const factor = (1 - dist/100) * 0.0008; // Reduced from 0.001
                     
                     // Cap mouse movement influence
-                    const maxMouseInfluence = 0.005;
+                    const maxMouseInfluence = 0.003; // Reduced from 0.005
                     let mouseInfluenceX = mouseDx * factor;
                     let mouseInfluenceY = mouseDy * factor;
                     
@@ -345,7 +345,7 @@
             
             // Cap maximum flow speed to prevent extreme values - much lower cap
             const flowSpeed = Math.sqrt(flowX*flowX + flowY*flowY);
-            const maxFlow = 0.05; // Reduced from 0.1
+            const maxFlow = 0.03; // Reduced from 0.05
             if (flowSpeed > maxFlow) {
                 flowX = (flowX / flowSpeed) * maxFlow;
                 flowY = (flowY / flowSpeed) * maxFlow;
@@ -357,9 +357,9 @@
                 window.prevFlowY = flowY;
             }
             
-            // Smooth transition between flow values (90% previous, 10% new)
-            const smoothedX = window.prevFlowX * 0.9 + flowX * 0.1;
-            const smoothedY = window.prevFlowY * 0.9 + flowY * 0.1;
+            // Increase smoothing for more gradual transitions
+            const smoothedX = window.prevFlowX * 0.95 + flowX * 0.05; // More smoothing (95/5 instead of 90/10)
+            const smoothedY = window.prevFlowY * 0.95 + flowY * 0.05; // More smoothing (95/5 instead of 90/10)
             
             // Store for next frame
             window.prevFlowX = smoothedX;
@@ -861,6 +861,7 @@
         function addFood(x, y) {
             for (let i = 0; i < 5; i++) {
                 foods.push({
+                    id: Date.now() + i, // Add unique ID to each food
                     x: x + (Math.random() - 0.5) * 10,
                     y: y + (Math.random() - 0.5) * 10,
                     size: 0.5 + Math.random() * 0.3, // Reduced food size
@@ -1045,6 +1046,15 @@
                 // Add eating animation effect similar to original
                 this.eatEffectTime = 0;
                 this.maxEatEffectTime = 25; // How long the eating effect lasts
+                
+                // Death state and animation
+                this.isDying = false;
+                this.isDead = false;
+                this.deathTime = 0;
+                this.deathDuration = 120; // 2 seconds at 60fps
+                this.chasingFood = false;
+                this.criticalEnergyLevel = 0.1; // Energy level that triggers death
+                this.chasedFoodId = null; // Track which food item we're chasing
                 
                 // Create the fish
                 this.createFishMesh();
@@ -1238,6 +1248,17 @@
             }
             
             update(deltaTime) {
+                // Don't update if already dead and animation complete
+                if (this.isDead && this.deathTime >= this.deathDuration) {
+                    return;
+                }
+                
+                // Handle death animation if dying
+                if (this.isDying) {
+                    this.updateDeathAnimation(deltaTime);
+                    return;
+                }
+                
                 // Scale deltaTime to make animation speed consistent
                 // CRITICAL FIX: Cap deltaTime to prevent extreme jumps in physics when frames drop
                 const maxDeltaTime = 0.05; // 50ms max (20fps)
@@ -1278,13 +1299,36 @@
                 this.timeToNextHunger--;
                 if (this.timeToNextHunger <= 0) {
                     this.hungry = true;
-                    this.energy = Math.max(0.3, this.energy - 0.1);
+                    this.energy = Math.max(this.criticalEnergyLevel / 2, this.energy - 0.1);
                     this.timeToNextHunger = 500 + Math.random() * 500;
+                    
+                    // Check if energy is too low and fish should die
+                    // Exception: If currently chasing food, give it a chance
+                    if (this.energy <= this.criticalEnergyLevel && !this.chasingFood) {
+                        this.startDying();
+                        return;
+                    }
                 }
                 
                 // Check for food if hungry
                 if (this.hungry) {
                     this.checkForFood();
+                }
+                
+                // If we were chasing food but it's gone from the array, we failed to get it
+                if (this.chasingFood && this.chasedFoodId !== null) {
+                    const foodStillExists = foods.some(food => food.id === this.chasedFoodId);
+                    if (!foodStillExists) {
+                        // We were chasing food but it disappeared (eaten by another fish or went off-screen)
+                        this.chasingFood = false;
+                        this.chasedFoodId = null;
+                        
+                        // If energy is critical, start dying
+                        if (this.energy <= this.criticalEnergyLevel) {
+                            this.startDying();
+                            return;
+                        }
+                    }
                 }
                 
                 // Update swimming animation
@@ -1293,9 +1337,24 @@
                 // Update pulse phase for glow effect
                 this.pulsePhase += this.pulseSpeed;
                 
-                // Update hunger factor - make it nearly binary like original
-                // Hungry fish barely glow at all in original version
-                this.hungerFactor = this.hungry ? 0.98 : 0.05;
+                // Update hunger factor based on energy level
+                // When energy drops below half of critical level, glow should be 0
+                const halfCritical = this.criticalEnergyLevel / 2; // Half of critical energy (0.05)
+                
+                if (this.energy <= halfCritical) {
+                    // No glow at all below half critical
+                    this.hungerFactor = 1.0;
+                } else if (this.energy <= this.criticalEnergyLevel) {
+                    // Linear fade between half-critical and critical
+                    const t = (this.energy - halfCritical) / halfCritical;
+                    this.hungerFactor = 0.98 - t * 0.5; // Fade from 0.98 to 0.48
+                } else if (this.hungry) {
+                    // Hungry but not critical - reduced glow
+                    this.hungerFactor = 0.6;
+                } else {
+                    // Normal - full glow
+                    this.hungerFactor = 0.05;
+                }
                 
                 // Update eat effect timer
                 if (this.eatEffectTime > 0) {
@@ -1467,6 +1526,8 @@
                         this.energy = Math.min(1.0, this.energy + food.energy/100);
                         this.hungry = false;
                         this.targetChangeTimer = 0;
+                        this.chasingFood = false;
+                        this.chasedFoodId = null;
                         
                         // Trigger eating animation effect
                         this.eatEffectTime = this.maxEatEffectTime;
@@ -1487,6 +1548,8 @@
                         this.targetX = food.x;
                         this.targetY = food.y;
                         this.targetChangeTimer = 10;
+                        this.chasingFood = true;
+                        this.chasedFoodId = food.id;
                         
                         // Move faster when chasing food, but with a speed cap
                         const chaseFactor = 1.5;
@@ -1671,6 +1734,80 @@
                     this.glowPositions.needsUpdate = true;
                 }
             }
+            
+            updateDeathAnimation(deltaTime) {
+                // Death animation: fish floats to the top while fading out and shrinking
+                this.deathTime++;
+                
+                // Calculate progress of death animation (0-1)
+                const progress = Math.min(this.deathTime / this.deathDuration, 1.0);
+                
+                // Slow down swimming motion
+                this.swimSpeed = 0.05 * (1 - progress * 0.8);
+                
+                // Update swim phase but with decreasing speed
+                this.swimPhase += this.swimSpeed;
+                
+                // Fish floats upward slightly
+                this.position.y += 0.1 * deltaTime * 60;
+                
+                // Fish rolls over (rotates on z-axis)
+                const rollAngle = progress * Math.PI * 0.5; // 90-degree roll
+                
+                // Calculate shrink factor (moved outside the if block so it's available for both mesh and glowMesh)
+                const shrinkFactor = 1 - progress * 0.4;
+                
+                // Update mesh opacity and scale
+                if (this.mesh) {
+                    // Fade out
+                    if (!this.mesh.material.transparent) {
+                        this.mesh.material.transparent = true;
+                    }
+                    this.mesh.material.opacity = 1 - progress * 0.8; // Don't fade completely
+                    
+                    // Apply roll and slightly shrink
+                    this.mesh.rotation.y = rollAngle; // Apply roll
+                    this.mesh.scale.set(shrinkFactor, shrinkFactor, 1);
+                }
+                
+                if (this.glowMesh) {
+                    this.glowMesh.material.opacity = (1 - progress) * 0.2; // Fade glow faster
+                    this.glowMesh.rotation.y = rollAngle; // Apply same roll
+                    this.glowMesh.scale.set(shrinkFactor, shrinkFactor, 1);
+                    
+                    // Fade glow color to a darker shade
+                    const baseColor = new THREE.Color(this.color);
+                    const darkColor = new THREE.Color(0x000022);
+                    const fadeColor = baseColor.clone().lerp(darkColor, progress);
+                    
+                    // Update glow color uniforms
+                    if (this.glowMesh.material.uniforms) {
+                        this.glowMesh.material.uniforms.energy.value = this.energy * (1 - progress);
+                        this.glowMesh.material.uniforms.color.value = hexToRgb(fadeColor.getHex());
+                    }
+                }
+                
+                // Update spine for last wiggle movements
+                this.updateSpine(deltaTime * 60);
+                this.updateMeshFromSpine();
+                
+                // Update mesh position
+                this.mesh.position.set(this.position.x, this.position.y, 0);
+                this.glowMesh.position.set(this.position.x, this.position.y, 0);
+                
+                // End of animation - mark as fully dead
+                if (progress >= 1.0) {
+                    this.isDead = true;
+                }
+            }
+            
+            startDying() {
+                this.isDying = true;
+                this.deathTime = 0;
+                
+                // Create death particles - subtle bubbles rising
+                createDeathBubbles(this.position.x, this.position.y, this.color);
+            }
         }
         
         // Create fish array
@@ -1844,6 +1981,60 @@
             // Update all fish
             for (const fish of fishes) {
                 fish.update(deltaTime);
+            }
+            
+            // Remove dead fish
+            for (let i = fishes.length - 1; i >= 0; i--) {
+                if (fishes[i].isDead && fishes[i].deathTime >= fishes[i].deathDuration) {
+                    // Remove the mesh from scene
+                    if (fishes[i].mesh) {
+                        scene.remove(fishes[i].mesh);
+                        fishes[i].mesh.geometry.dispose();
+                        fishes[i].mesh.material.dispose();
+                    }
+                    
+                    if (fishes[i].glowMesh) {
+                        scene.remove(fishes[i].glowMesh);
+                        fishes[i].glowMesh.geometry.dispose();
+                        fishes[i].glowMesh.material.dispose();
+                    }
+                    
+                    // Remove from array
+                    fishes.splice(i, 1);
+                }
+            }
+            
+            // Update death bubbles
+            if (window.deathBubbles && window.deathBubbles.length > 0) {
+                for (let i = window.deathBubbles.length - 1; i >= 0; i--) {
+                    const bubble = window.deathBubbles[i];
+                    bubble.userData.lifetime++;
+                    
+                    // Update position based on velocity
+                    bubble.position.x += bubble.userData.velocityX;
+                    bubble.position.y += bubble.userData.velocityY;
+                    
+                    // Get local flow and apply some influence
+                    const flow = getFlowAtPosition(bubble.position.x, bubble.position.y);
+                    bubble.position.x += flow.vx * 0.3;
+                    bubble.position.y += flow.vy * 0.3;
+                    
+                    // Scale bubble (slowly shrink)
+                    const scale = Math.max(0.1, 1 + bubble.userData.velocityScale * bubble.userData.lifetime);
+                    bubble.scale.set(scale, scale, 1);
+                    
+                    // Calculate fade based on lifetime
+                    const progress = bubble.userData.lifetime / bubble.userData.maxLifetime;
+                    bubble.material.opacity = (1 - progress) * 0.5;
+                    
+                    // Remove when animation completed
+                    if (bubble.userData.lifetime >= bubble.userData.maxLifetime) {
+                        scene.remove(bubble);
+                        bubble.geometry.dispose();
+                        bubble.material.dispose();
+                        window.deathBubbles.splice(i, 1);
+                    }
+                }
             }
             
             // Update visual effect rings
@@ -2293,6 +2484,63 @@
                 // Add to a collection for animation
                 if (!window.splashParticles) window.splashParticles = [];
                 window.splashParticles.push(particle);
+            }
+        }
+
+        // Create death bubbles effect when fish dies
+        function createDeathBubbles(x, y, color) {
+            // Number of bubbles based on fish position (more visible near center)
+            const bounds = viewSize * aspectRatio / 2;
+            const screenEdgeDistance = Math.min(
+                Math.abs(x - (-bounds)),
+                Math.abs(x - bounds),
+                Math.abs(y - (-viewSize / 2)),
+                Math.abs(y - viewSize / 2)
+            );
+            const isNearEdge = screenEdgeDistance < 50;
+            
+            // Fewer bubbles if near edge of screen
+            const bubbleCount = isNearEdge ? 8 : 15;
+            
+            for (let i = 0; i < bubbleCount; i++) {
+                // Create a small bubble
+                const radius = 0.1 + Math.random() * 0.2;
+                const geometry = new THREE.CircleGeometry(radius, 6);
+                
+                // Use a dimmer version of the fish color
+                const bubbleColor = new THREE.Color(color).multiplyScalar(0.7);
+                
+                const material = new THREE.MeshBasicMaterial({
+                    color: bubbleColor,
+                    transparent: true,
+                    opacity: 0.2 + Math.random() * 0.3,
+                    blending: THREE.AdditiveBlending
+                });
+                
+                const bubble = new THREE.Mesh(geometry, material);
+                
+                // Position with slight random offset from fish
+                const offsetRange = 4;
+                bubble.position.set(
+                    x + (Math.random() - 0.5) * offsetRange,
+                    y + (Math.random() - 0.5) * offsetRange,
+                    1 // Slightly in front of fish
+                );
+                
+                scene.add(bubble);
+                
+                // Animation data
+                bubble.userData = {
+                    lifetime: 0,
+                    maxLifetime: 30 + Math.floor(Math.random() * 60),
+                    velocityX: (Math.random() - 0.5) * 0.2,
+                    velocityY: 0.1 + Math.random() * 0.2, // Mainly upward
+                    velocityScale: -0.001 - Math.random() * 0.003 // Shrink rate
+                };
+                
+                // Add to a collection for animation
+                if (!window.deathBubbles) window.deathBubbles = [];
+                window.deathBubbles.push(bubble);
             }
         }
 
