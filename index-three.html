@@ -2218,6 +2218,84 @@
             }, 5000);
         });
 
+        // Create visual effect for food consumption
+        function createFoodConsumptionEffect(food, fish) {
+            // Create a copy of the food but as a custom effect
+            const foodGeometry = new THREE.CircleGeometry(food.size, 8);
+            const foodMaterial = new THREE.MeshBasicMaterial({ 
+                color: food.color,
+                transparent: true, 
+                opacity: food.alpha 
+            });
+            
+            const effect = new THREE.Mesh(foodGeometry, foodMaterial);
+            effect.position.set(food.x, food.y, 0);
+            scene.add(effect);
+            
+            // Calculate velocity toward fish mouth
+            const fishHeadX = fish.position.x + Math.cos(fish.angle) * (fish.length * 0.3);
+            const fishHeadY = fish.position.y + Math.sin(fish.angle) * (fish.length * 0.3);
+            
+            // Animation data
+            effect.userData = {
+                lifetime: 0,
+                maxLifetime: 20, // frames
+                startX: food.x,
+                startY: food.y,
+                targetX: fishHeadX,
+                targetY: fishHeadY,
+                startScale: 1.0,
+                endScale: 0.1
+            };
+            
+            // Add to a collection for animation
+            if (!window.foodEffects) window.foodEffects = [];
+            window.foodEffects.push(effect);
+            
+            // Create splash particles when food reaches the fish
+            setTimeout(() => {
+                createFoodSplashEffect(fishHeadX, fishHeadY, food.color, fish.angle);
+            }, 333); // ~20 frames at 60fps
+        }
+
+        // Create splash particles when fish eats food
+        function createFoodSplashEffect(x, y, color, fishAngle) {
+            // Create several tiny particles
+            const particleCount = 5 + Math.floor(Math.random() * 3);
+            
+            for (let i = 0; i < particleCount; i++) {
+                // Create a small particle
+                const particleGeometry = new THREE.CircleGeometry(0.2 + Math.random() * 0.3, 4);
+                const particleMaterial = new THREE.MeshBasicMaterial({ 
+                    color: color,
+                    transparent: true, 
+                    opacity: 0.8 
+                });
+                
+                const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+                
+                // Position at fish mouth
+                particle.position.set(x, y, 0);
+                scene.add(particle);
+                
+                // Random angle with bias toward fish's forward direction
+                const angleSpread = Math.PI * 0.6; // 60 degree spread
+                const angle = fishAngle + (Math.random() * angleSpread - angleSpread / 2);
+                
+                // Animation data
+                particle.userData = {
+                    lifetime: 0,
+                    maxLifetime: 15 + Math.floor(Math.random() * 10),
+                    velocityX: Math.cos(angle) * (0.5 + Math.random() * 0.5),
+                    velocityY: Math.sin(angle) * (0.5 + Math.random() * 0.5)
+                };
+                
+                // Add to a collection for animation
+                if (!window.splashParticles) window.splashParticles = [];
+                window.splashParticles.push(particle);
+            }
+        }
+
         // Start animation
         animate();
     </script>
